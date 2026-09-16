@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../friends/friends_screen.dart';
 import '../map/map_screen.dart';
+import '../notifications/notification_service.dart';
 import '../profile/profile_screen.dart';
 import '../reports/reports_list_screen.dart';
 
@@ -16,6 +17,14 @@ class RootShell extends StatefulWidget {
 
 class _RootShellState extends State<RootShell> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Se pide el permiso de notificaciones y se registra el token FCM recien
+    // aca, ya con sesion activa (el token se guarda contra el user_id).
+    NotificationService().init();
+  }
 
   void _goToTab(int index) => setState(() => _index = index);
 

@@ -13,6 +13,13 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(keystorePropertiesFile.inputStream())
 }
 
+// Firebase (notificaciones push): google-services.json es gitignored -- sin el
+// archivo, se omite el plugin para que el build no rompa en un clon sin Firebase.
+val googleServicesFile = file("google-services.json")
+if (googleServicesFile.exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.ruteros.ruteros"
     compileSdk = flutter.compileSdkVersion

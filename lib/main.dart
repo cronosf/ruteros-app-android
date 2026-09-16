@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/env.dart';
@@ -10,6 +11,12 @@ Future<void> main() async {
     url: Env.supabaseUrl,
     publishableKey: Env.supabaseAnonKey,
   );
+  // Sin google-services.json (no todos los entornos de desarrollo lo tienen
+  // configurado) esto tira, asi que se ignora el error y la app sigue
+  // funcionando sin notificaciones push en vez de no arrancar.
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {}
   runApp(const RuterosApp());
 }
 
