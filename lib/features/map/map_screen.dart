@@ -8,7 +8,9 @@ import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/env.dart';
 import '../../core/map_camera_controller.dart';
+import '../../core/marker_icons.dart';
 import '../../core/models.dart';
+import '../../core/osrm_service.dart';
 import '../../core/report_types.dart';
 import '../../core/theme.dart';
 import '../location/location_service.dart';
@@ -16,9 +18,6 @@ import 'report_sheet.dart';
 
 const _limaCenter = LatLng(-12.0464, -77.0428);
 const _searchRadiusMeters = 5000.0;
-
-// ignore: deprecated_member_use
-String _hex(Color color) => '#${color.value.toRadixString(16).padLeft(8, '0').substring(2)}';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -34,13 +33,21 @@ class _MapScreenState extends State<MapScreen> {
 
   MapLibreMapController? _mapController;
   bool _styleLoaded = false;
+  bool _darkMap = true;
   LatLng _myPosition = _limaCenter;
   LatLng? _pendingRoutePoint;
-  bool _searching = false;
+  Timer? _searchDebounce;
+  List<GeoSuggestion> _suggestions = [];
+
+  RouteResult? _activeRoute;
+  bool _startingRoute = false;
 
   Timer? _refreshTimer;
   RealtimeChannel? _channel;
   bool _permissionDenied = false;
+
+  String get _styleUrl =>
+      'https://api.maptiler.com/maps/streets-v2${_darkMap ? '-dark' : ''}/style.json?key=${Env.maptilerKey}';
 
   @override
   void initState() {
@@ -97,18 +104,52 @@ class _MapScreenState extends State<MapScreen> {
   void _onMapCreated(MapLibreMapController controller) {
     _mapController = controller;
     controller.onCircleTapped.add(_onCircleTapped);
+    controller.onSymbolTapped.add(_onSymbolTapped);
   }
+
+  // Se dispara al cargar el estilo la primera vez Y cada vez que se togglea
+  // claro/oscuro (setStyle recarga el mapa y borra circulos/symbols/lineas
+  // agregados en runtime, hay que volver a registrar todo).
+  Future<void> _onStyleLoaded() async {
+    await _registerReportIcons();
+    if (!mounted) return;
+    setState(() => _styleLoaded = true);
+    await _refreshNearby();
+    if (_activeRoute != null) {
+      await _mapController?.addLine(LineOptions(
+        geometry: _activeRoute!.geometry,
+        lineColor: '#3B82F6',
+        lineWidth: 5,
+      ));
+    }
+  }
+
+  Future<void> _registerReportIcons() async {
+    final controller = _mapController;
+    if (controller == null) return;
+    for (final type in reportTypes) {
+      final bytes = await renderMarkerIcon(icon: type.icon, backgroundColor: type.color);
+      await controller.addImage('report_${type.code}', bytes);
+    }
+  }
+
+  void _toggleMapStyle() => setState(() => _darkMap = !_darkMap);
 
   void _onCircleTapped(Circle circle) {
     final data = circle.data;
     if (data == null) return;
-    if (data['type'] == 'report') {
-      final report = data['report'] as ReportItem;
-      _showVoteDialog(report);
-    } else if (data['type'] == 'friend') {
+    if (data['type'] == 'friend') {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${data['nombres']} esta compartiendo su ubicacion')),
       );
+    }
+  }
+
+  void _onSymbolTapped(Symbol symbol) {
+    final data = symbol.data;
+    if (data == null) return;
+    if (data['type'] == 'report') {
+      _showVoteDialog(data['report'] as ReportItem);
     }
   }
 
@@ -136,70 +177,72 @@ class _MapScreenState extends State<MapScreen> {
     final friendIds = friends.map((f) => f.userId).toSet();
 
     await controller.clearCircles();
+    await controller.clearSymbols();
 
-    final options = <CircleOptions>[];
-    final dataList = <Map<String, dynamic>>[];
+    final circleOptions = <CircleOptions>[];
+    final circleData = <Map<String, dynamic>>[];
 
     // Mi propia posicion (ya enganchada a la calle). Se dibuja como circulo
     // propio en vez de usar el punto azul nativo de MapLibre (myLocationEnabled),
     // porque ese indicador nativo pinta la posicion cruda del GPS, no la snapeada.
-    options.add(CircleOptions(
+    circleOptions.add(CircleOptions(
       geometry: _myPosition,
       circleColor: '#3B82F6',
       circleRadius: 9,
       circleStrokeColor: '#ffffff',
       circleStrokeWidth: 3,
     ));
-    dataList.add({'type': 'me'});
+    circleData.add({'type': 'me'});
 
     // Amigos compartiendo ubicacion: se distinguen de "otros usuarios cercanos"
     // con un color distinto (rosa) y su nombre, sin importar la distancia.
     for (final f in friends) {
-      options.add(CircleOptions(
+      circleOptions.add(CircleOptions(
         geometry: LatLng(f.lat, f.lng),
         circleColor: '#EC4899',
         circleRadius: 9,
         circleStrokeColor: '#ffffff',
         circleStrokeWidth: 2,
       ));
-      dataList.add({'type': 'friend', 'nombres': f.nombres});
+      circleData.add({'type': 'friend', 'nombres': f.nombres});
     }
 
     for (final u in users.where((u) => !friendIds.contains(u.userId))) {
-      options.add(CircleOptions(
+      circleOptions.add(CircleOptions(
         geometry: LatLng(u.lat, u.lng),
         circleColor: '#22C55E',
         circleRadius: 7,
         circleStrokeColor: '#ffffff',
         circleStrokeWidth: 2,
       ));
-      dataList.add({'type': 'user'});
-    }
-
-    for (final r in reports) {
-      options.add(CircleOptions(
-        geometry: LatLng(r.lat, r.lng),
-        circleColor: _hex(reportTypeByCode(r.typeCode).color),
-        circleRadius: 8,
-        circleStrokeColor: '#ffffff',
-        circleStrokeWidth: 2,
-      ));
-      dataList.add({'type': 'report', 'report': r});
+      circleData.add({'type': 'user'});
     }
 
     if (_pendingRoutePoint != null) {
-      options.add(CircleOptions(
+      circleOptions.add(CircleOptions(
         geometry: _pendingRoutePoint!,
-        circleColor: '#3B82F6',
+        circleColor: '#F59E0B',
         circleRadius: 8,
         circleStrokeColor: '#ffffff',
         circleStrokeWidth: 2,
       ));
-      dataList.add({'type': 'pending-route'});
+      circleData.add({'type': 'pending-route'});
     }
 
-    for (var i = 0; i < options.length; i++) {
-      await controller.addCircle(options[i], dataList[i]);
+    for (var i = 0; i < circleOptions.length; i++) {
+      await controller.addCircle(circleOptions[i], circleData[i]);
+    }
+
+    // Reportes: icono propio por tipo (Symbol), no un circulo de color plano.
+    for (final r in reports) {
+      await controller.addSymbol(
+        SymbolOptions(
+          geometry: LatLng(r.lat, r.lng),
+          iconImage: 'report_${r.typeCode}',
+          iconSize: 0.5,
+        ),
+        {'type': 'report', 'report': r},
+      );
     }
   }
 
@@ -289,38 +332,91 @@ class _MapScreenState extends State<MapScreen> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ruta guardada.')));
   }
 
-  Future<void> _searchAddress() async {
-    final query = _searchCtrl.text.trim();
-    if (query.isEmpty || Env.maptilerKey.isEmpty) return;
-    setState(() => _searching = true);
+  Future<void> _startRoute() async {
+    final destination = _pendingRoutePoint;
+    if (destination == null) return;
+    setState(() => _startingRoute = true);
+    final route = await OsrmService.getRoute(_myPosition, destination);
+    if (!mounted) return;
+    setState(() => _startingRoute = false);
+
+    if (route == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo calcular la ruta. Probá de nuevo.')),
+      );
+      return;
+    }
+
+    await _mapController?.clearLines();
+    await _mapController?.addLine(LineOptions(
+      geometry: route.geometry,
+      lineColor: '#3B82F6',
+      lineWidth: 5,
+    ));
+
+    setState(() => _activeRoute = route);
+  }
+
+  Future<void> _exitRoute() async {
+    await _mapController?.clearLines();
+    setState(() {
+      _activeRoute = null;
+      _pendingRoutePoint = null;
+    });
+    _refreshNearby();
+  }
+
+  void _onSearchChanged(String query) {
+    _searchDebounce?.cancel();
+    if (query.trim().length < 3) {
+      setState(() => _suggestions = []);
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () => _fetchSuggestions(query));
+  }
+
+  Future<void> _fetchSuggestions(String query) async {
+    if (Env.maptilerKey.isEmpty) return;
     try {
       final uri = Uri.parse(
         'https://api.maptiler.com/geocoding/${Uri.encodeComponent(query)}.json'
-        '?key=${Env.maptilerKey}&language=es&proximity=${_myPosition.longitude},${_myPosition.latitude}',
+        '?key=${Env.maptilerKey}&language=es&proximity=${_myPosition.longitude},${_myPosition.latitude}&limit=5',
       );
       final res = await http.get(uri);
       final data = jsonDecode(res.body) as Map<String, dynamic>;
-      final features = data['features'] as List?;
-      if (features == null || features.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se encontro esa direccion.')),
-        );
-        return;
-      }
-      final coords = (features.first['geometry']['coordinates'] as List);
-      final target = LatLng((coords[1] as num).toDouble(), (coords[0] as num).toDouble());
-      _mapController?.animateCamera(CameraUpdate.newLatLngZoom(target, 15));
-      setState(() => _pendingRoutePoint = target);
-      _refreshNearby();
-    } finally {
-      if (mounted) setState(() => _searching = false);
+      final features = (data['features'] as List?) ?? [];
+      if (!mounted) return;
+      setState(() {
+        _suggestions = features.map((f) {
+          final coords = f['geometry']['coordinates'] as List;
+          return GeoSuggestion(
+            placeName: f['place_name'] as String,
+            lat: (coords[1] as num).toDouble(),
+            lng: (coords[0] as num).toDouble(),
+          );
+        }).toList();
+      });
+    } catch (_) {
+      // Sin sugerencias si falla la red; no interrumpe el resto de la app.
     }
+  }
+
+  void _selectSuggestion(GeoSuggestion s) {
+    final point = LatLng(s.lat, s.lng);
+    _searchCtrl.text = s.placeName;
+    setState(() {
+      _suggestions = [];
+      _pendingRoutePoint = point;
+    });
+    _mapController?.animateCamera(CameraUpdate.newLatLngZoom(point, 15));
+    _refreshNearby();
+    FocusScope.of(context).unfocus();
   }
 
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _searchDebounce?.cancel();
     _channel?.unsubscribe();
     MapCameraController.target.removeListener(_onExternalCameraTarget);
     _locationService.stop();
@@ -352,63 +448,137 @@ class _MapScreenState extends State<MapScreen> {
       body: Stack(
         children: [
           MapLibreMap(
-            styleString: 'https://api.maptiler.com/maps/streets-v2/style.json?key=${Env.maptilerKey}',
+            styleString: _styleUrl,
             initialCameraPosition: const CameraPosition(target: _limaCenter, zoom: 14),
             onMapCreated: _onMapCreated,
-            onStyleLoadedCallback: () {
-              setState(() => _styleLoaded = true);
-              _refreshNearby();
-            },
+            onStyleLoadedCallback: _onStyleLoaded,
             onMapLongClick: _onLongPress,
           ),
           Positioned(
             top: MediaQuery.of(context).padding.top + 12,
             left: 16,
             right: 16,
-            child: Material(
-              color: const Color(0xFF111C30),
-              borderRadius: BorderRadius.circular(28),
-              elevation: 4,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                child: Row(
-                  children: [
-                    const Icon(Icons.search, color: AppColors.grisUI),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: _searchCtrl,
-                        style: const TextStyle(color: AppColors.textoClaro),
-                        decoration: const InputDecoration(
-                          hintText: 'Buscar direccion o lugar',
-                          hintStyle: TextStyle(color: AppColors.grisUI),
-                          border: InputBorder.none,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Material(
+                  color: const Color(0xFF111C30),
+                  borderRadius: BorderRadius.circular(28),
+                  elevation: 4,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.search, color: AppColors.grisUI),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: _searchCtrl,
+                            style: const TextStyle(color: AppColors.textoClaro),
+                            decoration: const InputDecoration(
+                              hintText: 'Buscar direccion o lugar',
+                              hintStyle: TextStyle(color: AppColors.grisUI),
+                              border: InputBorder.none,
+                            ),
+                            onChanged: _onSearchChanged,
+                          ),
                         ),
-                        onSubmitted: (_) => _searchAddress(),
-                      ),
+                        IconButton(
+                          icon: Icon(_darkMap ? Icons.light_mode : Icons.dark_mode, color: AppColors.verde),
+                          onPressed: _toggleMapStyle,
+                          tooltip: 'Cambiar estilo del mapa',
+                        ),
+                      ],
                     ),
-                    if (_searching)
-                      const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    else
-                      IconButton(icon: const Icon(Icons.arrow_forward, color: AppColors.verde), onPressed: _searchAddress),
-                  ],
+                  ),
                 ),
-              ),
+                if (_suggestions.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(top: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF111C30),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      itemCount: _suggestions.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.grisUI),
+                      itemBuilder: (context, i) {
+                        final s = _suggestions[i];
+                        return ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.place, color: AppColors.grisUI, size: 20),
+                          title: Text(
+                            s.placeName,
+                            style: const TextStyle(color: AppColors.textoClaro, fontSize: 13),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onTap: () => _selectSuggestion(s),
+                        );
+                      },
+                    ),
+                  ),
+              ],
             ),
           ),
-          if (_pendingRoutePoint != null)
+          if (_activeRoute != null)
             Positioned(
               bottom: 90,
               left: 16,
               right: 16,
-              child: FilledButton.icon(
-                onPressed: _saveRoute,
-                icon: const Icon(Icons.bookmark_add),
-                label: const Text('Guardar ruta hasta este punto'),
+              child: Material(
+                color: const Color(0xFF111C30),
+                borderRadius: BorderRadius.circular(16),
+                elevation: 4,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.alt_route, color: AppColors.azul),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '${_activeRoute!.distanceLabel} · ${_activeRoute!.durationLabel}',
+                          style: const TextStyle(color: AppColors.textoClaro, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _exitRoute,
+                        child: const Text('Salir', style: TextStyle(color: Colors.redAccent)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else if (_pendingRoutePoint != null)
+            Positioned(
+              bottom: 90,
+              left: 16,
+              right: 16,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FilledButton.icon(
+                    onPressed: _startingRoute ? null : _startRoute,
+                    icon: _startingRoute
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.directions),
+                    label: Text(_startingRoute ? 'Calculando...' : 'Iniciar ruta'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _saveRoute,
+                    icon: const Icon(Icons.bookmark_add),
+                    label: const Text('Guardar ruta hasta este punto'),
+                  ),
+                ],
               ),
             ),
         ],

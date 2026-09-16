@@ -1,13 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../core/peru_data.dart';
 import 'auth_service.dart';
-
-const _peruDepartamentos = [
-  'Amazonas', 'Ancash', 'Apurimac', 'Arequipa', 'Ayacucho', 'Cajamarca',
-  'Callao', 'Cusco', 'Huancavelica', 'Huanuco', 'Ica', 'Junin',
-  'La Libertad', 'Lambayeque', 'Lima', 'Loreto', 'Madre de Dios',
-  'Moquegua', 'Pasco', 'Piura', 'Puno', 'San Martin', 'Tacna',
-  'Tumbes', 'Ucayali',
-];
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -107,7 +100,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 DropdownButtonFormField<String>(
                   initialValue: _departamento,
                   decoration: const InputDecoration(labelText: 'Departamento'),
-                  items: _peruDepartamentos
+                  items: peruDepartamentos
                       .map((d) => DropdownMenuItem(value: d, child: Text(d)))
                       .toList(),
                   onChanged: (v) => setState(() => _departamento = v ?? _departamento),

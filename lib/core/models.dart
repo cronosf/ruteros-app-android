@@ -1,3 +1,11 @@
+class GeoSuggestion {
+  final String placeName;
+  final double lat;
+  final double lng;
+
+  GeoSuggestion({required this.placeName, required this.lat, required this.lng});
+}
+
 class Profile {
   final String id;
   final String nombres;

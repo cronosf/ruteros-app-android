@@ -15,7 +15,9 @@ Future<void> showReportSheet(BuildContext context, void Function(String typeCode
             left: 20,
             right: 20,
             top: 20,
-            bottom: 20 + MediaQuery.of(ctx).viewInsets.bottom,
+            // viewInsets.bottom cubre el teclado; padding.bottom cubre la barra de
+            // gestos del sistema -- sin este ultimo el boton quedaba pegado al borde.
+            bottom: 24 + MediaQuery.of(ctx).viewInsets.bottom + MediaQuery.of(ctx).padding.bottom,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
