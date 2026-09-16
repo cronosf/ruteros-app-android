@@ -64,7 +64,7 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     _locationService.start();
-    _locationService.positionStream.listen(_onOwnPosition);
+    _locationService.snappedPositionStream.listen(_onOwnPosition);
 
     // Fallback de refresco por si un evento realtime se pierde (no garantizado por Supabase).
     _refreshTimer = Timer.periodic(const Duration(seconds: 8), (_) => _refreshNearby());
@@ -86,8 +86,9 @@ class _MapScreenState extends State<MapScreen> {
         .subscribe();
   }
 
-  void _onOwnPosition(Position position) {
-    final newPos = LatLng(position.latitude, position.longitude);
+  // newPos ya viene "enganchada" a la calle mas cercana (snap-to-road, ver
+  // LocationService) — no es la lectura cruda del GPS.
+  void _onOwnPosition(LatLng newPos) {
     setState(() => _myPosition = newPos);
     _mapController?.animateCamera(CameraUpdate.newLatLng(newPos));
     _refreshNearby();
@@ -138,6 +139,18 @@ class _MapScreenState extends State<MapScreen> {
 
     final options = <CircleOptions>[];
     final dataList = <Map<String, dynamic>>[];
+
+    // Mi propia posicion (ya enganchada a la calle). Se dibuja como circulo
+    // propio en vez de usar el punto azul nativo de MapLibre (myLocationEnabled),
+    // porque ese indicador nativo pinta la posicion cruda del GPS, no la snapeada.
+    options.add(CircleOptions(
+      geometry: _myPosition,
+      circleColor: '#3B82F6',
+      circleRadius: 9,
+      circleStrokeColor: '#ffffff',
+      circleStrokeWidth: 3,
+    ));
+    dataList.add({'type': 'me'});
 
     // Amigos compartiendo ubicacion: se distinguen de "otros usuarios cercanos"
     // con un color distinto (rosa) y su nombre, sin importar la distancia.
@@ -347,7 +360,6 @@ class _MapScreenState extends State<MapScreen> {
               _refreshNearby();
             },
             onMapLongClick: _onLongPress,
-            myLocationEnabled: true,
           ),
           Positioned(
             top: MediaQuery.of(context).padding.top + 12,

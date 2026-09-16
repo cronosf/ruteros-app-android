@@ -49,6 +49,9 @@ class AuthService {
     final googleSignIn = GoogleSignIn(
       serverClientId: Env.googleWebClientId.isNotEmpty ? Env.googleWebClientId : null,
     );
+    // Sin este signOut, el SDK de Google reusa en silencio la ultima cuenta
+    // autenticada en el dispositivo y nunca muestra el selector de cuentas.
+    await googleSignIn.signOut();
     final googleUser = await googleSignIn.signIn();
     if (googleUser == null) return; // usuario cancelo
 
