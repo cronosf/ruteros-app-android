@@ -17,8 +17,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    // version ya trae el numero completo (major.minor.patch); el patch se
+    // mantiene igual al build number, asi que no hace falta mostrar "+N" aparte.
     PackageInfo.fromPlatform().then((info) {
-      if (mounted) setState(() => _version = '${info.version}+${info.buildNumber}');
+      if (mounted) setState(() => _version = info.version);
     });
   }
 
