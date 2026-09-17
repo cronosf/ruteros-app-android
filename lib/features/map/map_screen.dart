@@ -17,6 +17,7 @@ import '../../core/report_types.dart';
 import '../../core/theme.dart';
 import '../location/location_service.dart';
 import 'report_sheet.dart';
+import 'save_route_sheet.dart';
 
 const _limaCenter = LatLng(-12.0464, -77.0428);
 const _searchRadiusMeters = 5000.0;
@@ -807,10 +808,17 @@ class _MapScreenState extends State<MapScreen> {
     if (wantsSave != true || !mounted) return;
 
     // El trayecto no tiene una direccion geocodificada de antemano (no paso
-    // por el buscador) -- se pide aca, justo antes de mostrar el dialogo.
+    // por el buscador) -- se pide aca, justo antes de mostrar el panel. Se
+    // geocodifica el pin final real (donde tocaste "Detener trayecto"), no el
+    // de arranque.
     final destinationAddress = await _reverseGeocode(destination);
     if (!mounted) return;
-    final input = await _askRouteNameAndAddress('Guardar trayecto', initialAddress: destinationAddress);
+    final input = await showSaveRouteSheet(
+      context,
+      title: 'Guardar trayecto',
+      initialPoint: destination,
+      initialAddress: destinationAddress,
+    );
     if (input == null) return;
 
     final userId = _supabase.auth.currentUser?.id;
@@ -821,8 +829,8 @@ class _MapScreenState extends State<MapScreen> {
       'direccion_exacta': input.direccionExacta,
       'origen_lat': origin.latitude,
       'origen_lng': origin.longitude,
-      'destino_lat': destination.latitude,
-      'destino_lng': destination.longitude,
+      'destino_lat': input.lat,
+      'destino_lng': input.lng,
       'distance_meters': distance,
       'duration_seconds': duration,
       'recorded': true,
@@ -835,64 +843,17 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // Usado tanto para "Guardar ruta" (pin manual) como para "Guardar trayecto"
-  // (grabado manejando) -- ambos guardan lo mismo en saved_routes, asi que
-  // piden los mismos dos campos: nombre, y la direccion exacta (numero de
-  // casa/local) que la busqueda de direcciones no siempre trae. `initialAddress`
-  // precarga ese campo con la direccion geocodificada del pin/destino, asi el
-  // usuario solo tiene que agregarle el numero en vez de escribir todo de cero.
-  Future<({String nombre, String? direccionExacta})?> _askRouteNameAndAddress(
-    String title, {
-    String? initialAddress,
-  }) async {
-    final nameCtrl = TextEditingController();
-    final addressCtrl = TextEditingController(text: initialAddress ?? '');
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'Nombre (ej. Casa - Trabajo)'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: addressCtrl,
-              minLines: 1,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Direccion exacta (opcional)',
-                helperText: 'Agregale el numero de casa/local: la busqueda no siempre lo trae',
-                helperMaxLines: 2,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Guardar')),
-        ],
-      ),
-    );
-    if (confirmed != true || nameCtrl.text.trim().isEmpty) return null;
-    return (
-      nombre: nameCtrl.text.trim(),
-      direccionExacta: addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
-    );
-  }
-
   Future<void> _saveRoute() async {
     final point = _pendingRoutePoint;
     if (point == null) return;
     // El buscador ya tiene la direccion geocodificada de este pin (se llena
-    // al mantener presionado el mapa o al elegir una sugerencia) -- se usa
-    // como punto de partida del campo "Direccion exacta".
-    final input = await _askRouteNameAndAddress(
-      'Guardar ruta',
+    // al mantener presionado el mapa o al elegir una sugerencia) -- se
+    // precarga en el panel, tanto en "Ubicacion / Coordenadas" como en
+    // "Direccion exacta".
+    final input = await showSaveRouteSheet(
+      context,
+      title: 'Guardar ruta',
+      initialPoint: point,
       initialAddress: _searchCtrl.text.trim().isEmpty ? null : _searchCtrl.text.trim(),
     );
     if (input == null) return;
@@ -905,8 +866,8 @@ class _MapScreenState extends State<MapScreen> {
       'direccion_exacta': input.direccionExacta,
       'origen_lat': _myPosition.latitude,
       'origen_lng': _myPosition.longitude,
-      'destino_lat': point.latitude,
-      'destino_lng': point.longitude,
+      'destino_lat': input.lat,
+      'destino_lng': input.lng,
     });
 
     if (!mounted) return;
