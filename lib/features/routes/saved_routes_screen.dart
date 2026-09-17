@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/env.dart';
 import '../../core/map_camera_controller.dart';
 import '../../core/models.dart';
 import '../../core/theme.dart';
@@ -60,6 +64,16 @@ class _SavedRoutesScreenState extends State<SavedRoutesScreen> {
     _load();
   }
 
+  Future<void> _editRoute(SavedRoute route) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _EditRouteForm(route: route),
+    );
+    if (saved == true) _load();
+  }
+
   void _openOnMap(SavedRoute route) {
     // Reabre como destino pendiente (no solo centra la camara): asi aparece
     // el pin y el boton "Iniciar ruta" para retomarla desde donde estes ahora.
@@ -113,15 +127,202 @@ class _SavedRoutesScreenState extends State<SavedRoutesScreen> {
                                   : (r.recorded ? 'Grabado' : 'Guardado'),
                             ),
                             onTap: () => _openOnMap(r),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                              onPressed: () => _delete(r.id),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined, color: AppColors.grisUI),
+                                  onPressed: () => _editRoute(r),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                  onPressed: () => _delete(r.id),
+                                ),
+                              ],
                             ),
                           ),
                         );
                       },
                     ),
             ),
+    );
+  }
+}
+
+class _EditRouteForm extends StatefulWidget {
+  final SavedRoute route;
+
+  const _EditRouteForm({required this.route});
+
+  @override
+  State<_EditRouteForm> createState() => _EditRouteFormState();
+}
+
+class _EditRouteFormState extends State<_EditRouteForm> {
+  final _supabase = Supabase.instance.client;
+  late final TextEditingController _nombreCtrl;
+  late final TextEditingController _direccionCtrl;
+
+  double? _newDestinoLat;
+  double? _newDestinoLng;
+  Timer? _searchDebounce;
+  List<GeoSuggestion> _suggestions = [];
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _nombreCtrl = TextEditingController(text: widget.route.nombre);
+    _direccionCtrl = TextEditingController(
+      text: 'Ubicacion actual (${widget.route.destinoLat.toStringAsFixed(4)}, '
+          '${widget.route.destinoLng.toStringAsFixed(4)})',
+    );
+  }
+
+  @override
+  void dispose() {
+    _nombreCtrl.dispose();
+    _direccionCtrl.dispose();
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
+
+  void _onAddressChanged(String query) {
+    _searchDebounce?.cancel();
+    if (query.trim().length < 3) {
+      setState(() => _suggestions = []);
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () => _fetchSuggestions(query));
+  }
+
+  Future<void> _fetchSuggestions(String query) async {
+    if (Env.maptilerKey.isEmpty) return;
+    try {
+      final uri = Uri.parse(
+        'https://api.maptiler.com/geocoding/${Uri.encodeComponent(query)}.json'
+        '?key=${Env.maptilerKey}&language=es&limit=5',
+      );
+      final res = await http.get(uri);
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final features = (data['features'] as List?) ?? [];
+      if (!mounted) return;
+      setState(() {
+        _suggestions = features.map((f) {
+          final coords = f['geometry']['coordinates'] as List;
+          return GeoSuggestion(
+            placeName: f['place_name'] as String,
+            lat: (coords[1] as num).toDouble(),
+            lng: (coords[0] as num).toDouble(),
+          );
+        }).toList();
+      });
+    } catch (_) {
+      // sin sugerencias si falla la red
+    }
+  }
+
+  void _selectSuggestion(GeoSuggestion s) {
+    setState(() {
+      _newDestinoLat = s.lat;
+      _newDestinoLng = s.lng;
+      _direccionCtrl.text = s.placeName;
+      _suggestions = [];
+    });
+    FocusScope.of(context).unfocus();
+  }
+
+  Future<void> _submit() async {
+    final nombre = _nombreCtrl.text.trim();
+    if (nombre.isEmpty) {
+      setState(() => _error = 'El nombre es requerido.');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final payload = <String, dynamic>{'nombre': nombre};
+      if (_newDestinoLat != null && _newDestinoLng != null) {
+        payload['destino_lat'] = _newDestinoLat;
+        payload['destino_lng'] = _newDestinoLng;
+      }
+      await _supabase.from('saved_routes').update(payload).eq('id', widget.route.id);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.fondoOscuro,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Editar ruta', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _nombreCtrl,
+                decoration: const InputDecoration(labelText: 'Nombre (ej. Casa - Trabajo)'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _direccionCtrl,
+                onChanged: _onAddressChanged,
+                decoration: const InputDecoration(
+                  labelText: 'Direccion exacta',
+                  helperText: 'Busca y elegi una direccion para cambiar el destino',
+                ),
+              ),
+              if (_suggestions.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(top: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111C30),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _suggestions.length,
+                    itemBuilder: (context, i) {
+                      final s = _suggestions[i];
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.place, size: 18),
+                        title: Text(s.placeName, style: const TextStyle(fontSize: 13)),
+                        onTap: () => _selectSuggestion(s),
+                      );
+                    },
+                  ),
+                ),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+              ],
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: _saving ? null : _submit,
+                child: _saving
+                    ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Guardar cambios'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
