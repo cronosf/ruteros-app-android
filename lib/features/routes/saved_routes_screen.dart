@@ -293,17 +293,26 @@ class _EditRouteFormState extends State<_EditRouteForm> {
               TextField(
                 controller: _direccionCtrl,
                 onChanged: _onAddressChanged,
+                // Un valor largo (una direccion completa) hace salto de linea
+                // en vez de desbordarse o quedar cortado -- el campo crece
+                // hasta 3 lineas segun haga falta.
+                minLines: 1,
+                maxLines: 3,
                 decoration: const InputDecoration(
                   labelText: 'Ubicacion / Coordenadas',
                   helperText: 'Busca y elegi una direccion para cambiar el destino',
+                  helperMaxLines: 2,
                 ),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: _direccionExactaCtrl,
+                minLines: 1,
+                maxLines: 3,
                 decoration: const InputDecoration(
                   labelText: 'Direccion exacta',
                   helperText: 'Numero de casa/local, referencia, etc (la busqueda no siempre lo trae)',
+                  helperMaxLines: 2,
                 ),
               ),
               if (_suggestions.isNotEmpty)
