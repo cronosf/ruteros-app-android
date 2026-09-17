@@ -18,7 +18,6 @@ void main() {
   testWidgets('Muestra el formulario de login', (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
 
-    expect(find.text('Ruteros'), findsOneWidget);
     expect(find.text('Ingresar'), findsOneWidget);
     expect(find.text('Continuar con Google'), findsOneWidget);
   });

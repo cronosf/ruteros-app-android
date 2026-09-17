@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import '../auth/auth_service.dart';
-import 'edit_profile_screen.dart';
+import '../notifications/notification_service.dart';
+import 'help_screen.dart';
+import 'terms_screen.dart';
+import 'user_manual_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -12,16 +14,26 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _auth = AuthService();
-  String _version = '';
+  final _notifications = NotificationService();
+  bool _notificationsEnabled = true;
+  bool _loadingNotifSetting = true;
 
   @override
   void initState() {
     super.initState();
-    // version ya trae el numero completo (major.minor.patch); el patch se
-    // mantiene igual al build number, asi que no hace falta mostrar "+N" aparte.
-    PackageInfo.fromPlatform().then((info) {
-      if (mounted) setState(() => _version = info.version);
+    NotificationService.isEnabled().then((enabled) {
+      if (mounted) {
+        setState(() {
+          _notificationsEnabled = enabled;
+          _loadingNotifSetting = false;
+        });
+      }
     });
+  }
+
+  Future<void> _onNotificationsChanged(bool value) async {
+    setState(() => _notificationsEnabled = value);
+    await _notifications.setEnabled(value);
   }
 
   @override
@@ -31,18 +43,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          SwitchListTile(
+            secondary: const Icon(Icons.notifications_outlined),
+            title: const Text('Notificaciones'),
+            subtitle: const Text('Avisos de reportes cercanos (10km)'),
+            value: _notificationsEnabled,
+            onChanged: _loadingNotifSetting ? null : _onNotificationsChanged,
+          ),
+          const Divider(),
           ListTile(
-            leading: const Icon(Icons.person_outline),
-            title: const Text('Editar perfil'),
+            leading: const Icon(Icons.menu_book_outlined),
+            title: const Text('Manual de usuario'),
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+              MaterialPageRoute(builder: (_) => const UserManualScreen()),
             ),
           ),
           const Divider(),
           ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('Version de la app'),
-            subtitle: Text(_version.isEmpty ? 'Cargando...' : _version),
+            leading: const Icon(Icons.help_outline),
+            title: const Text('Ayuda'),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HelpScreen()),
+            ),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text('Terminos y condiciones'),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const TermsScreen()),
+            ),
           ),
           const Divider(),
           ListTile(

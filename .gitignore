@@ -54,3 +54,8 @@ env.json
 # que viven en el mismo proyecto Firebase. Google dice que es "seguro" de
 # commitear, pero mezcla info de otro proyecto no relacionado -- mejor no.
 android/app/google-services.json
+
+# Credencial de service account de Firebase Admin SDK (usada para subir la
+# Edge Function de notificaciones a Supabase) -- da acceso admin completo al
+# proyecto de Firebase, nunca debe subirse al repo.
+ruteros-*firebase-adminsdk*.json

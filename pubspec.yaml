@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.1.4+4
+version: 1.1.30+30
 
 environment:
   sdk: ^3.6.1
@@ -46,11 +46,18 @@ dependencies:
   firebase_core: ^4.15.0
   firebase_messaging: ^16.7.0
   http: ^1.2.2
+  shared_preferences: ^2.5.3
+  # Voz guiada del modo de ruteo: usa el motor de texto-a-voz nativo del
+  # telefono (Android TextToSpeech), gratis y sin key/billing.
+  flutter_tts: ^4.2.0
+  # Abre el link de descarga del APK cuando hay una actualizacion obligatoria
+  # (ver core/update_service.dart). Ya era una dependencia transitiva de otros
+  # paquetes; se fija como directa porque ahora se usa su API explicitamente.
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  shared_preferences: ^2.5.3
   flutter_launcher_icons: ^0.14.3
   flutter_native_splash: ^2.4.8
 
@@ -63,14 +70,22 @@ dev_dependencies:
 
 flutter_launcher_icons:
   android: true
-  image_path: assets/branding/logo_icon.png
+  # app_icon.png es logo_icon.png re-centrado: el glifo (pin+ruta+arcos)
+  # quedaba corrido ~5% hacia la derecha dentro de su propio canvas cuadrado,
+  # asi que se veia pegado a la derecha en el icono instalado.
+  image_path: assets/branding/app_icon.png
 
 flutter_native_splash:
+  # Sin "image": el splash nativo de Android (el que se ve un instante antes
+  # de que Flutter arranque a renderizar) queda vacio, solo el fondo oscuro.
+  # El logo_icon.png metido ahi se veia distorsionado porque Android 12+
+  # fuerza el icono del splash a una mascara circular con una zona de
+  # seguridad especifica, y nuestro logo (cuadrado, sin margen) no calzaba
+  # bien en ese molde. El splash con logo + texto real es el widget propio
+  # (SplashScreen), que se ve bien porque ahi controlamos el layout entero.
   color: "#0B1220"
-  image: assets/branding/logo_icon.png
   android_12:
     color: "#0B1220"
-    image: assets/branding/logo_icon.png
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

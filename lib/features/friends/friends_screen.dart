@@ -42,7 +42,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
   }
 
   Future<void> _addFriend() async {
-    final emailCtrl = TextEditingController();
+    final inputCtrl = TextEditingController();
     String? error;
     await showDialog(
       context: context,
@@ -53,9 +53,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
-                controller: emailCtrl,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Correo de tu amigo'),
+                controller: inputCtrl,
+                decoration: const InputDecoration(labelText: 'Correo o usuario de tu amigo'),
               ),
               if (error != null) ...[
                 const SizedBox(height: 8),
@@ -67,19 +66,35 @@ class _FriendsScreenState extends State<FriendsScreen> {
             TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
             FilledButton(
               onPressed: () async {
-                final email = emailCtrl.text.trim();
-                if (email.isEmpty) return;
-                final found = await _supabase.rpc('find_user_by_email', params: {'p_email': email});
-                final list = found as List;
-                if (list.isEmpty) {
-                  setState(() => error = 'No se encontro un usuario con ese correo.');
-                  return;
+                var input = inputCtrl.text.trim();
+                if (input.isEmpty) return;
+                final isEmail = input.contains('@');
+                // La app muestra el usuario de otros siempre como "@usuario"
+                // (ver Profile.displayName), asi que es natural que alguien
+                // escriba el "@" aca tambien al buscar por usuario -- se le
+                // saca antes de comparar, si no nunca va a coincidir.
+                if (!isEmail && input.startsWith('@')) {
+                  input = input.substring(1);
                 }
+                setState(() => error = null);
                 try {
+                  final rpcName = isEmail ? 'find_user_by_email' : 'find_user_by_username';
+                  final paramName = isEmail ? 'p_email' : 'p_usuario';
+                  final found = await _supabase.rpc(rpcName, params: {paramName: input});
+                  final list = found as List;
+                  if (list.isEmpty) {
+                    setState(() => error = 'No se encontro ningun usuario con ese dato.');
+                    return;
+                  }
                   await _supabase.rpc('send_friend_request', params: {'p_friend_id': list.first['id']});
                   if (ctx.mounted) Navigator.of(ctx).pop();
                   _load();
                 } catch (e) {
+                  // Antes, si esta busqueda fallaba (ej. la funcion RPC no
+                  // existia todavia por una migracion pendiente, o un error
+                  // de red), no se mostraba nada -- parecia que el usuario
+                  // "no existia" cuando en realidad la busqueda ni se pudo
+                  // completar. Ahora se muestra el error real.
                   setState(() => error = e.toString());
                 }
               },
@@ -111,7 +126,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     ..._requests.map((r) => Card(
                           child: ListTile(
                             leading: const CircleAvatar(child: Icon(Icons.person)),
-                            title: Text('${r.nombres} ${r.apellidos}'),
+                            title: Text(r.displayName),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -142,7 +157,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                   ..._friends.map((f) => Card(
                         child: ListTile(
                           leading: const CircleAvatar(child: Icon(Icons.person)),
-                          title: Text('${f.nombres} ${f.apellidos}'),
+                          title: Text(f.displayName),
                         ),
                       )),
                 ],

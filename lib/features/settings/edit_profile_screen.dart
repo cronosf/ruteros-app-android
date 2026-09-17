@@ -19,8 +19,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _direccion = TextEditingController();
   final _provincia = TextEditingController();
   final _distrito = TextEditingController();
+  final _departamentoLibre = TextEditingController();
+  String _pais = 'PE';
   String _departamento = 'Lima';
   String _email = '';
+  String _usuario = '';
 
   bool _loading = true;
   bool _saving = false;
@@ -30,6 +33,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _departamentoLibre.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -45,8 +54,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _provincia.text = data['provincia'] as String? ?? '';
       _distrito.text = data['distrito'] as String? ?? '';
       _email = data['email'] as String? ?? '';
+      _usuario = data['usuario'] as String? ?? '';
+      _pais = data['pais'] as String? ?? 'PE';
       final dep = data['departamento'] as String?;
-      if (dep != null && peruDepartamentos.contains(dep)) _departamento = dep;
+      if (_pais == 'PE' && dep != null && peruDepartamentos.contains(dep)) {
+        _departamento = dep;
+      } else {
+        _departamentoLibre.text = dep ?? '';
+      }
     }
     setState(() => _loading = false);
   }
@@ -66,7 +81,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'apellidos': _apellidos.text.trim(),
         'telefono': _telefono.text.trim(),
         'direccion': _direccion.text.trim(),
-        'departamento': _departamento,
+        'pais': _pais,
+        'departamento': _pais == 'PE' ? _departamento : _departamentoLibre.text.trim(),
         'provincia': _provincia.text.trim(),
         'distrito': _distrito.text.trim(),
       }).eq('id', userId);
@@ -95,6 +111,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     TextFormField(
+                      initialValue: _usuario.isEmpty ? '(sin usuario)' : '@$_usuario',
+                      enabled: false,
+                      decoration: const InputDecoration(labelText: 'Usuario (no editable)'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
                       initialValue: _email,
                       enabled: false,
                       decoration: const InputDecoration(labelText: 'Correo (no editable)'),
@@ -122,13 +144,28 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
                     ),
                     DropdownButtonFormField<String>(
-                      initialValue: _departamento,
-                      decoration: const InputDecoration(labelText: 'Departamento'),
-                      items: peruDepartamentos
-                          .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                      initialValue: _pais,
+                      decoration: const InputDecoration(labelText: 'Pais'),
+                      items: paises
+                          .map((p) => DropdownMenuItem(value: p.code, child: Text(p.label)))
                           .toList(),
-                      onChanged: (v) => setState(() => _departamento = v ?? _departamento),
+                      onChanged: (v) => setState(() => _pais = v ?? _pais),
                     ),
+                    if (_pais == 'PE')
+                      DropdownButtonFormField<String>(
+                        initialValue: _departamento,
+                        decoration: const InputDecoration(labelText: 'Departamento'),
+                        items: peruDepartamentos
+                            .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                            .toList(),
+                        onChanged: (v) => setState(() => _departamento = v ?? _departamento),
+                      )
+                    else
+                      TextFormField(
+                        controller: _departamentoLibre,
+                        decoration: const InputDecoration(labelText: 'Departamento / Estado / Region'),
+                        validator: (v) => (v == null || v.isEmpty) ? 'Requerido' : null,
+                      ),
                     TextFormField(
                       controller: _provincia,
                       decoration: const InputDecoration(labelText: 'Provincia'),

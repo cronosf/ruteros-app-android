@@ -5,6 +5,15 @@ import 'package:http/http.dart' as http;
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+/// Posicion ya enganchada a la calle (snap-to-road) + el heading crudo del
+/// GPS, para poder rotar el icono de "en ruta" hacia donde mira el usuario.
+class SnappedPosition {
+  final LatLng point;
+  final double? heading;
+
+  SnappedPosition(this.point, this.heading);
+}
+
 /// Publica la posicion del usuario en `live_locations` (Supabase) cada vez que
 /// se mueve mas de 25m, con un tick maximo cada 6s para no saturar la red ni
 /// la bateria. No llama a ninguna API de Google: el compartir posicion en
@@ -21,8 +30,8 @@ class LocationService {
   StreamSubscription<Position>? _positionSub;
   DateTime _lastUpsert = DateTime.fromMillisecondsSinceEpoch(0);
 
-  final _snappedPositionController = StreamController<LatLng>.broadcast();
-  Stream<LatLng> get snappedPositionStream => _snappedPositionController.stream;
+  final _snappedPositionController = StreamController<SnappedPosition>.broadcast();
+  Stream<SnappedPosition> get snappedPositionStream => _snappedPositionController.stream;
 
   Future<bool> ensurePermission() async {
     var permission = await Geolocator.checkPermission();
@@ -64,7 +73,7 @@ class LocationService {
 
   Future<void> _onPosition(Position position) async {
     final snapped = await _snapToRoad(LatLng(position.latitude, position.longitude));
-    _snappedPositionController.add(snapped);
+    _snappedPositionController.add(SnappedPosition(snapped, position.heading));
 
     final now = DateTime.now();
     if (now.difference(_lastUpsert) < const Duration(seconds: 6)) return;

@@ -15,19 +15,21 @@ class ReportTypeInfo {
 }
 
 /// Catalogo de tipos de reporte para la UI de Flutter. Debe reflejar los
-/// `code` insertados en la tabla `report_types` (supabase/migrations/0001_init.sql).
-/// police_pnp y atu_checkpoint son especificos de Peru; el resto es generico
-/// y reusable cuando se agreguen otros paises.
+/// `code` insertados en la tabla `report_types` (supabase/migrations/0001_init.sql,
+/// generalizado en 0014_generalize_report_types.sql). Los labels son todos
+/// universales -- ninguno menciona una autoridad especifica de un pais
+/// (police_pnp/atu_checkpoint originalmente decian "PNP"/"ATU", especificos
+/// de Peru, y se generalizaron para que la app tenga sentido en cualquier pais).
 const reportTypes = <ReportTypeInfo>[
   ReportTypeInfo(
     code: 'police_pnp',
-    label: 'Control policial (PNP)',
+    label: 'Control policial',
     icon: Icons.local_police,
     color: Color(0xFF1D4ED8),
   ),
   ReportTypeInfo(
     code: 'atu_checkpoint',
-    label: 'Fiscalizacion ATU',
+    label: 'Fiscalizacion de transito',
     icon: Icons.badge,
     color: Color(0xFFF59E0B),
   ),

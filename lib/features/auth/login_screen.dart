@@ -14,6 +14,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _loading = false;
+  bool _rememberMe = true;
   String? _error;
 
   Future<void> _submit() async {
@@ -22,7 +23,8 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      await _auth.signIn(email: _emailCtrl.text.trim(), password: _passwordCtrl.text);
+      await _auth.signIn(identifier: _emailCtrl.text.trim(), password: _passwordCtrl.text);
+      await AuthService.setRememberSession(_rememberMe);
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -34,6 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _error = null);
     try {
       await _auth.signInWithGoogle();
+      await AuthService.setRememberSession(_rememberMe);
     } catch (e) {
       setState(() => _error = e.toString());
     }
@@ -50,14 +53,21 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('Ruteros', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                const Text('Inicia sesion para ver el mapa en tiempo real'),
+                Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: Image.asset('assets/branding/logo_icon.png', width: 96, height: 96),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Inicia sesion para ver el mapa en tiempo real',
+                  textAlign: TextAlign.center,
+                ),
                 const SizedBox(height: 24),
                 TextField(
                   controller: _emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Correo', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(labelText: 'Correo o usuario', border: OutlineInputBorder()),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -65,11 +75,19 @@ class _LoginScreenState extends State<LoginScreen> {
                   obscureText: true,
                   decoration: const InputDecoration(labelText: 'Contrasena', border: OutlineInputBorder()),
                 ),
+                CheckboxListTile(
+                  value: _rememberMe,
+                  onChanged: (v) => setState(() => _rememberMe = v ?? true),
+                  title: const Text('Recordar sesion', style: TextStyle(fontSize: 14)),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                ),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
                   Text(_error!, style: const TextStyle(color: Colors.red)),
                 ],
-                const SizedBox(height: 20),
+                const SizedBox(height: 8),
                 FilledButton(
                   onPressed: _loading ? null : _submit,
                   child: _loading
@@ -79,7 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: _loginWithGoogle,
-                  icon: const Icon(Icons.login),
+                  icon: Image.asset('assets/branding/google_logo.png', width: 20, height: 20),
                   label: const Text('Continuar con Google'),
                 ),
                 const SizedBox(height: 20),

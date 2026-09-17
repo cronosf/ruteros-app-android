@@ -19,11 +19,30 @@ class _SavedRoutesScreenState extends State<SavedRoutesScreen> {
   final _supabase = Supabase.instance.client;
   List<SavedRoute> _routes = [];
   bool _loading = true;
+  RealtimeChannel? _channel;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // Ahora que esta pantalla es una pestana fija del bottom nav (queda
+    // montada desde que arranca la app, IndexedStack), sin esto una ruta
+    // guardada desde el Mapa no aparecia aca sin salir y volver a entrar.
+    _channel = _supabase
+        .channel('public:ruteros-saved-routes')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'saved_routes',
+          callback: (_) => _load(),
+        )
+        .subscribe();
+  }
+
+  @override
+  void dispose() {
+    _channel?.unsubscribe();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -42,8 +61,14 @@ class _SavedRoutesScreenState extends State<SavedRoutesScreen> {
   }
 
   void _openOnMap(SavedRoute route) {
-    MapCameraController.moveTo(LatLng(route.origenLat, route.origenLng));
-    Navigator.of(context).pop();
+    // Reabre como destino pendiente (no solo centra la camara): asi aparece
+    // el pin y el boton "Iniciar ruta" para retomarla desde donde estes ahora.
+    MapCameraController.openSavedRoute(LatLng(route.destinoLat, route.destinoLng));
+    // Esta pantalla se llega tanto empujada desde Perfil (hay que hacer pop)
+    // como siendo una pestana propia del bottom nav (no hay nada que popear).
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
     widget.onOpenOnMap();
   }
 
@@ -53,36 +78,50 @@ class _SavedRoutesScreenState extends State<SavedRoutesScreen> {
       appBar: AppBar(title: const Text('Mis rutas')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _routes.isEmpty
-              ? const Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Text(
-                    'Todavia no guardaste ninguna ruta. Desde el mapa, manten presionado un punto y usa "Guardar ruta".',
-                    style: TextStyle(color: AppColors.grisUI),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _routes.length,
-                  itemBuilder: (context, i) {
-                    final r = _routes[i];
-                    return Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.alt_route, color: AppColors.azul),
-                        title: Text(r.nombre),
-                        subtitle: Text(
-                          '${r.origenLat.toStringAsFixed(4)}, ${r.origenLng.toStringAsFixed(4)} → '
-                          '${r.destinoLat.toStringAsFixed(4)}, ${r.destinoLng.toStringAsFixed(4)}',
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: _routes.isEmpty
+                  ? ListView(
+                      children: const [
+                        Padding(
+                          padding: EdgeInsets.all(32),
+                          child: Text(
+                            'Todavia no guardaste ninguna ruta. Desde el mapa, manten presionado un punto y usa "Guardar ruta".',
+                            style: TextStyle(color: AppColors.grisUI),
+                          ),
                         ),
-                        onTap: () => _openOnMap(r),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                          onPressed: () => _delete(r.id),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                      ],
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(12),
+                      itemCount: _routes.length,
+                      itemBuilder: (context, i) {
+                        final r = _routes[i];
+                        final metrics = [r.distanceLabel, r.durationLabel]
+                            .whereType<String>()
+                            .join(' · ');
+                        return Card(
+                          child: ListTile(
+                            leading: Icon(
+                              r.recorded ? Icons.fiber_manual_record : Icons.alt_route,
+                              color: r.recorded ? Colors.redAccent : AppColors.azul,
+                            ),
+                            title: Text(r.nombre),
+                            subtitle: Text(
+                              metrics.isNotEmpty
+                                  ? '${r.recorded ? 'Grabado' : 'Guardado'} · $metrics'
+                                  : (r.recorded ? 'Grabado' : 'Guardado'),
+                            ),
+                            onTap: () => _openOnMap(r),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                              onPressed: () => _delete(r.id),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
     );
   }
 }

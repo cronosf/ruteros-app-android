@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
+import '../../core/update_service.dart';
 import '../auth/auth_gate.dart';
+import '../update/update_required_screen.dart';
 
 /// Pantalla de marca mostrada al abrir la app, antes de resolver la sesion.
 /// El splash nativo de Android (flutter_native_splash) ya se ve un instante
@@ -17,12 +19,24 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 1400), () {
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const AuthGate()),
-      );
-    });
+    _init();
+  }
+
+  Future<void> _init() async {
+    // El chequeo de actualizacion corre en paralelo al delay del splash (no
+    // se suma tiempo de espera extra), y como es sin sesion (no depende de
+    // Supabase Auth) se puede hacer antes que cualquier otra cosa.
+    final results = await Future.wait([
+      Future.delayed(const Duration(milliseconds: 1400)),
+      UpdateService.checkForUpdate(),
+    ]);
+    if (!mounted) return;
+    final updateInfo = results[1] as AppUpdateInfo?;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => updateInfo != null ? UpdateRequiredScreen(info: updateInfo) : const AuthGate(),
+      ),
+    );
   }
 
   @override
