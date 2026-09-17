@@ -301,6 +301,7 @@ class SponsoredPinAdmin {
   final String businessName;
   final String category;
   final String? description;
+  final String? direccionExacta;
   final double lat;
   final double lng;
   final double radiusM;
@@ -319,6 +320,7 @@ class SponsoredPinAdmin {
     required this.endsAt,
     required this.status,
     this.description,
+    this.direccionExacta,
   });
 
   factory SponsoredPinAdmin.fromJson(Map<String, dynamic> json) => SponsoredPinAdmin(
@@ -326,6 +328,7 @@ class SponsoredPinAdmin {
         businessName: json['business_name'] as String,
         category: json['category'] as String,
         description: json['description'] as String?,
+        direccionExacta: json['direccion_exacta'] as String?,
         lat: (json['lat'] as num).toDouble(),
         lng: (json['lng'] as num).toDouble(),
         radiusM: (json['radius_m'] as num).toDouble(),

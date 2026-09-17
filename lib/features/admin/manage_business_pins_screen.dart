@@ -148,6 +148,7 @@ class _BusinessPinFormState extends State<_BusinessPinForm> {
   final _categoria = TextEditingController();
   final _descripcion = TextEditingController();
   final _direccionCtrl = TextEditingController();
+  final _direccionExactaCtrl = TextEditingController();
 
   double? _lat;
   double? _lng;
@@ -172,6 +173,7 @@ class _BusinessPinFormState extends State<_BusinessPinForm> {
       _lat = e.lat;
       _lng = e.lng;
       _direccionCtrl.text = 'Ubicacion ya guardada (${e.lat.toStringAsFixed(4)}, ${e.lng.toStringAsFixed(4)})';
+      _direccionExactaCtrl.text = e.direccionExacta ?? '';
       _radius = e.radiusM;
       _startsAt = e.startsAt;
       _endsAt = e.endsAt;
@@ -182,6 +184,7 @@ class _BusinessPinFormState extends State<_BusinessPinForm> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _direccionExactaCtrl.dispose();
     super.dispose();
   }
 
@@ -267,6 +270,7 @@ class _BusinessPinFormState extends State<_BusinessPinForm> {
         'business_name': _nombre.text.trim(),
         'category': _categoria.text.trim(),
         'description': _descripcion.text.trim().isEmpty ? null : _descripcion.text.trim(),
+        'direccion_exacta': _direccionExactaCtrl.text.trim().isEmpty ? null : _direccionExactaCtrl.text.trim(),
         'geom': 'POINT($_lng $_lat)',
         'radius_m': _radius,
         'starts_at': _startsAt.toIso8601String(),
@@ -328,7 +332,7 @@ class _BusinessPinFormState extends State<_BusinessPinForm> {
                   controller: _direccionCtrl,
                   onChanged: _onAddressChanged,
                   decoration: const InputDecoration(
-                    labelText: 'Direccion exacta',
+                    labelText: 'Ubicacion / Coordenadas',
                     helperText: 'Busca y elegi una direccion de la lista',
                   ),
                 ),
@@ -353,6 +357,14 @@ class _BusinessPinFormState extends State<_BusinessPinForm> {
                       },
                     ),
                   ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _direccionExactaCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Direccion exacta',
+                    helperText: 'Numero de local, referencia, etc (la busqueda no siempre lo trae)',
+                  ),
+                ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<double>(
                   initialValue: _radius,
