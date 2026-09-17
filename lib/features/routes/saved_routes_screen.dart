@@ -162,6 +162,7 @@ class _EditRouteFormState extends State<_EditRouteForm> {
   final _supabase = Supabase.instance.client;
   late final TextEditingController _nombreCtrl;
   late final TextEditingController _direccionCtrl;
+  late final TextEditingController _direccionExactaCtrl;
 
   double? _newDestinoLat;
   double? _newDestinoLng;
@@ -178,12 +179,14 @@ class _EditRouteFormState extends State<_EditRouteForm> {
       text: 'Ubicacion actual (${widget.route.destinoLat.toStringAsFixed(4)}, '
           '${widget.route.destinoLng.toStringAsFixed(4)})',
     );
+    _direccionExactaCtrl = TextEditingController(text: widget.route.direccionExacta ?? '');
   }
 
   @override
   void dispose() {
     _nombreCtrl.dispose();
     _direccionCtrl.dispose();
+    _direccionExactaCtrl.dispose();
     _searchDebounce?.cancel();
     super.dispose();
   }
@@ -244,7 +247,10 @@ class _EditRouteFormState extends State<_EditRouteForm> {
       _error = null;
     });
     try {
-      final payload = <String, dynamic>{'nombre': nombre};
+      final payload = <String, dynamic>{
+        'nombre': nombre,
+        'direccion_exacta': _direccionExactaCtrl.text.trim().isEmpty ? null : _direccionExactaCtrl.text.trim(),
+      };
       if (_newDestinoLat != null && _newDestinoLng != null) {
         payload['destino_lat'] = _newDestinoLat;
         payload['destino_lng'] = _newDestinoLng;
@@ -261,7 +267,12 @@ class _EditRouteFormState extends State<_EditRouteForm> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      // viewInsets.bottom cubre el teclado; padding.bottom cubre la barra de
+      // gestos del sistema -- sin este ultimo el boton de guardar quedaba
+      // pegado/tapado por la barra de navegacion del telefono.
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom,
+      ),
       child: Container(
         decoration: const BoxDecoration(
           color: AppColors.fondoOscuro,
@@ -283,8 +294,16 @@ class _EditRouteFormState extends State<_EditRouteForm> {
                 controller: _direccionCtrl,
                 onChanged: _onAddressChanged,
                 decoration: const InputDecoration(
-                  labelText: 'Direccion exacta',
+                  labelText: 'Ubicacion / Coordenadas',
                   helperText: 'Busca y elegi una direccion para cambiar el destino',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _direccionExactaCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Direccion exacta',
+                  helperText: 'Numero de casa/local, referencia, etc (la busqueda no siempre lo trae)',
                 ),
               ),
               if (_suggestions.isNotEmpty)

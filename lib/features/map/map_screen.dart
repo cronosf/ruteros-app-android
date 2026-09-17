@@ -806,31 +806,15 @@ class _MapScreenState extends State<MapScreen> {
     );
     if (wantsSave != true || !mounted) return;
 
-    final nameCtrl = TextEditingController();
-    final nombre = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Guardar trayecto'),
-        content: TextField(
-          controller: nameCtrl,
-          decoration: const InputDecoration(labelText: 'Nombre (ej. Casa - Trabajo)'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(nameCtrl.text.trim()),
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
-    );
-    if (nombre == null || nombre.isEmpty) return;
+    final input = await _askRouteNameAndAddress('Guardar trayecto');
+    if (input == null) return;
 
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return;
     await _supabase.from('saved_routes').insert({
       'user_id': userId,
-      'nombre': nombre,
+      'nombre': input.nombre,
+      'direccion_exacta': input.direccionExacta,
       'origen_lat': origin.latitude,
       'origen_lng': origin.longitude,
       'destino_lat': destination.latitude,
@@ -847,34 +831,60 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  Future<void> _saveRoute() async {
-    final point = _pendingRoutePoint;
-    if (point == null) return;
+  // Usado tanto para "Guardar ruta" (pin manual) como para "Guardar trayecto"
+  // (grabado manejando) -- ambos guardan lo mismo en saved_routes, asi que
+  // piden los mismos dos campos: nombre, y la direccion exacta (numero de
+  // casa/local) que la busqueda de direcciones no siempre trae.
+  Future<({String nombre, String? direccionExacta})?> _askRouteNameAndAddress(String title) async {
     final nameCtrl = TextEditingController();
-    final nombre = await showDialog<String>(
+    final addressCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Guardar ruta'),
-        content: TextField(
-          controller: nameCtrl,
-          decoration: const InputDecoration(labelText: 'Nombre (ej. Casa - Trabajo)'),
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Nombre (ej. Casa - Trabajo)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: addressCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Direccion exacta (opcional)',
+                helperText: 'Numero de casa/local, referencia, etc',
+              ),
+            ),
+          ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(nameCtrl.text.trim()),
-            child: const Text('Guardar'),
-          ),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Guardar')),
         ],
       ),
     );
-    if (nombre == null || nombre.isEmpty) return;
+    if (confirmed != true || nameCtrl.text.trim().isEmpty) return null;
+    return (
+      nombre: nameCtrl.text.trim(),
+      direccionExacta: addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
+    );
+  }
+
+  Future<void> _saveRoute() async {
+    final point = _pendingRoutePoint;
+    if (point == null) return;
+    final input = await _askRouteNameAndAddress('Guardar ruta');
+    if (input == null) return;
 
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return;
     await _supabase.from('saved_routes').insert({
       'user_id': userId,
-      'nombre': nombre,
+      'nombre': input.nombre,
+      'direccion_exacta': input.direccionExacta,
       'origen_lat': _myPosition.latitude,
       'origen_lng': _myPosition.longitude,
       'destino_lat': point.latitude,

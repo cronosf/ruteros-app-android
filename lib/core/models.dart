@@ -181,6 +181,7 @@ class SavedRoute {
   final double? distanceMeters;
   final int? durationSeconds;
   final bool recorded;
+  final String? direccionExacta;
 
   SavedRoute({
     required this.id,
@@ -192,6 +193,7 @@ class SavedRoute {
     this.distanceMeters,
     this.durationSeconds,
     this.recorded = false,
+    this.direccionExacta,
   });
 
   String? get distanceLabel {
@@ -220,6 +222,7 @@ class SavedRoute {
         distanceMeters: (json['distance_meters'] as num?)?.toDouble(),
         durationSeconds: (json['duration_seconds'] as num?)?.toInt(),
         recorded: json['recorded'] as bool? ?? false,
+        direccionExacta: json['direccion_exacta'] as String?,
       );
 }
 

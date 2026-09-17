@@ -61,8 +61,25 @@ const _sections = <_ManualSection>[
     title: 'Como guardar una ruta preferida',
     body:
         'Con un pin colocado en el mapa, toca "Guardar ruta hasta este punto" y '
-        'ponele un nombre (ej. "Casa - Trabajo"). Despues la encontras en '
-        'Perfil > Mis rutas, para volver a abrirla cuando quieras sin buscarla de nuevo.',
+        'ponele un nombre (ej. "Casa - Trabajo") y, si queres, la direccion exacta '
+        '(numero de casa/local, ya que la busqueda no siempre lo trae). Despues la '
+        'encontras en Perfil > Mis rutas, para volver a abrirla cuando quieras sin '
+        'buscarla de nuevo.',
+  ),
+  _ManualSection(
+    icon: Icons.fiber_manual_record,
+    title: 'Como grabar tu propio trayecto',
+    body:
+        '1. Toca el boton rojo redondo debajo de "mi ubicacion" para iniciar la '
+        'grabacion (a diferencia de "Iniciar ruta", no necesitas elegir un destino '
+        'antes: se graba tu camino real mientras manejas).\n'
+        '2. Maneja normalmente -- vas a ver la distancia y el tiempo transcurrido en '
+        'la barra inferior.\n'
+        '3. Al llegar a donde querias, toca "Detener trayecto".\n'
+        '4. Te va a preguntar si queres guardarlo en tus rutas frecuentes; si aceptas, '
+        'te pide nombre y direccion exacta, igual que al guardar una ruta manualmente. '
+        'Despues aparece en Mis rutas marcado como "Grabado", con la distancia y '
+        'duracion reales.',
   ),
   _ManualSection(
     icon: Icons.edit,
@@ -98,7 +115,9 @@ class UserManualScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Manual de usuario')),
       body: ListView.separated(
-        padding: const EdgeInsets.all(16),
+        // padding.bottom cubre la barra de gestos del sistema -- sin esto la
+        // ultima tarjeta quedaba pegada/tapada por esa barra.
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.of(context).padding.bottom),
         itemCount: _sections.length,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (context, i) {
