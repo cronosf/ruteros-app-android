@@ -4,6 +4,7 @@ import '../notifications/notification_service.dart';
 import 'help_screen.dart';
 import 'terms_screen.dart';
 import 'user_manual_screen.dart';
+import 'voice_guide_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -49,6 +50,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: const Text('Avisos de reportes cercanos (10km)'),
             value: _notificationsEnabled,
             onChanged: _loadingNotifSetting ? null : _onNotificationsChanged,
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.record_voice_over_outlined),
+            title: const Text('Guia de voz'),
+            subtitle: const Text('Elegi el idioma/voz de la guia al navegar'),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const VoiceGuideScreen()),
+            ),
           ),
           const Divider(),
           ListTile(

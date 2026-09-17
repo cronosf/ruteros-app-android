@@ -15,6 +15,7 @@ import '../../core/models.dart';
 import '../../core/osrm_service.dart';
 import '../../core/report_types.dart';
 import '../../core/theme.dart';
+import '../../core/voice_guide_service.dart';
 import '../location/location_service.dart';
 import 'report_sheet.dart';
 import 'save_route_sheet.dart';
@@ -105,16 +106,24 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _initTts() async {
-    // Si el motor de TTS del telefono no tiene instalada la voz "es-ES"
-    // especifica, setLanguage devuelve false/1 en vez de tirar una excepcion
-    // -- probamos un par de variantes de espanol antes de darnos por vencidos
-    // y quedarnos con el idioma por defecto del sistema (mejor una voz en
-    // ingles leyendo texto en espanol que ningun sonido).
-    for (final lang in ['es-ES', 'es-US', 'es-MX', 'es']) {
-      final isAvailable = await _tts.isLanguageAvailable(lang);
+    // Si el usuario eligio una voz especifica en Configuracion > Guia de voz,
+    // se respeta esa (sin importar en que pais este despues). Si no eligio
+    // nada (null = automatico), se prueba un par de variantes de espanol
+    // segun lo que tenga instalado el telefono -- setLanguage devuelve
+    // false/1 en vez de tirar una excepcion si no esta disponible.
+    final savedLocale = await VoiceGuideService.getSavedLocale();
+    if (savedLocale != null) {
+      final isAvailable = await _tts.isLanguageAvailable(savedLocale);
       if (isAvailable == true || isAvailable == 1) {
-        await _tts.setLanguage(lang);
-        break;
+        await _tts.setLanguage(savedLocale);
+      }
+    } else {
+      for (final lang in ['es-ES', 'es-US', 'es-MX', 'es']) {
+        final isAvailable = await _tts.isLanguageAvailable(lang);
+        if (isAvailable == true || isAvailable == 1) {
+          await _tts.setLanguage(lang);
+          break;
+        }
       }
     }
     await _tts.setSpeechRate(0.48);
@@ -218,12 +227,19 @@ class _MapScreenState extends State<MapScreen> {
   // al presionar "Iniciar ruta" (no al recalcular o cambiar de alternativa,
   // para no repetir el aviso a cada rato) y no depende de que llegue una
   // lectura de GPS nueva -- confirma de una que la voz esta funcionando.
-  void _resetVoiceGuidance(RouteResult route, {bool announceStart = false}) {
+  Future<void> _resetVoiceGuidance(RouteResult route, {bool announceStart = false}) async {
     _voiceSteps = route.steps;
     _nextVoiceStepIndex = 1;
     _announcedFar.clear();
     _announcedNear.clear();
-    if (announceStart) _speak('Iniciando ruta, voz guiada activada.');
+    if (announceStart) {
+      // Se re-lee la preferencia de voz recien aca (no solo en initState) por
+      // si el usuario la cambio en Configuracion > Guia de voz mientras el
+      // mapa seguia montado de fondo (IndexedStack no destruye las pestanas
+      // al cambiar de tab) -- asi cada "Iniciar ruta" usa la voz mas reciente.
+      await _initTts();
+      await _speak('Iniciando ruta, voz guiada activada.');
+    }
 
     _voiceGuidanceTimer?.cancel();
     _voiceGuidanceTimer = Timer.periodic(
